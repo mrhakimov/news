@@ -40,7 +40,7 @@ class PlaidFinancialTool(Component):
 
     display_name = "Plaid Financial Tool"
     description = "Tool for agents to access bank accounts and investment portfolios via Plaid API"
-    icon = "building-2"
+    icon = "💰"
     name = "PlaidFinancialTool"
     documentation = "https://plaid.com/docs/"
 
@@ -592,13 +592,10 @@ class PlaidFinancialTool(Component):
             )
 
     def build_tool(self) -> Data:
-        """Build the tool for agent use"""
-        self._safe_log("Building tool for agent use")
+        """Plaid tool for agent"""
 
         tool_data = {
             "data": self.get_financial_data(self.data_type, self.output_format)
         }
 
-        self.status = "Tool built and ready for use"
-        self._safe_log("Tool built successfully and ready for agent use")
         return Data(data=tool_data)
