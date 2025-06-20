@@ -101,7 +101,7 @@ class PlaidFinancialTool(Component):
         ),
     ]
 
-    outputs = [Output(display_name="Tool", name="tool", method="build_tool")]
+    outputs = [Output(display_name="Plaid Tool", name="plaid", method="plaid")]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -591,7 +591,7 @@ class PlaidFinancialTool(Component):
                 indent=2,
             )
 
-    def build_tool(self) -> Data:
+    def plaid(self) -> Data:
         """Plaid tool for agent"""
 
         tool_data = {
