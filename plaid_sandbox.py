@@ -24,16 +24,16 @@ api_client = plaid.ApiClient(configuration)
 client = plaid_api.PlaidApi(api_client)
 
 # 2. Create a Link Token (including investments product)
-link_request = LinkTokenCreateRequest(
-    products=[Products('auth'), Products('transactions'), Products('investments')],
-    client_name="Plaid Test App",
-    country_codes=[CountryCode('US')],
-    language='en',
-    user={'client_user_id': 'user_good'}
-)
-link_response = client.link_token_create(link_request)
-link_token = link_response['link_token']
-print("Link token:", link_token)
+# link_request = LinkTokenCreateRequest(
+#     products=[Products('auth'), Products('transactions'), Products('investments')],
+#     client_name="Plaid Test App",
+#     country_codes=[CountryCode('US')],
+#     language='en',
+#     user={'client_user_id': 'user_good'}
+# )
+# link_response = client.link_token_create(link_request)
+# link_token = link_response['link_token']
+# print("Link token:", link_token)
 
 # 3. Simulate public token creation (Sandbox only)
 sandbox_public_token_response = client.sandbox_public_token_create({
@@ -388,3 +388,5 @@ else:
 #     print("3. The sandbox institution not supporting investment transactions")
 #     print("4. Date range issues or other API parameter problems")
 #     print(f"\nDetailed error: {str(e)}")
+
+

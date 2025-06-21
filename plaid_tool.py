@@ -105,21 +105,10 @@ class PlaidFinancialTool(Component):
         self.status = "Initialized"
         # Don't log during init - component context not available yet
 
-    def _safe_log(self, message: str):
-        """Safely log a message only if component context is available"""
-        try:
-            self.log(message)
-        except RuntimeError:
-            # Component context not available, skip logging
-            pass
-
     def _setup_plaid_client(self):
         """Initialize Plaid API client"""
         if self.plaid_client is not None:
-            self._safe_log("Plaid client already initialized, skipping setup")
             return
-
-        self._safe_log(f"Setting up Plaid client for environment: {self.environment}")
 
         try:
             # Use proper Plaid Environment constants
@@ -141,12 +130,10 @@ class PlaidFinancialTool(Component):
             api_client = plaid.ApiClient(configuration)
             self.plaid_client = plaid_api.PlaidApi(api_client)
             self.status = f"Connected to Plaid {self.environment} environment"
-            self._safe_log(self.status)
 
         except Exception as e:
             error_msg = f"Failed to setup Plaid client: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise ValueError(error_msg)
 
     def _generate_sandbox_access_token(self) -> str:
@@ -154,89 +141,63 @@ class PlaidFinancialTool(Component):
         Generate a sandbox access token automatically
         Only works in sandbox environment
         """
-        self._safe_log("Starting sandbox access token generation")
 
         if self.environment != "sandbox":
             error_msg = "Auto-generation only available in sandbox environment"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise ValueError(error_msg)
 
         if self._generated_access_token:
-            self._safe_log("Using cached generated access token")
             return self._generated_access_token
 
         self._setup_plaid_client()
 
         try:
-            # Step 1: Create sandbox public token
-            institution_names = {
-                "ins_109508": "First Platypus Bank",
-                "ins_109509": "Second Platypus Bank", 
-                "ins_109510": "Third Platypus Bank",
-                "ins_109511": "Fourth Platypus Bank",
-            }
 
-            institution_id = getattr(self, "sandbox_institution", "ins_109508")
-            institution_name = institution_names.get(institution_id, institution_id)
-            self.status = f"Creating sandbox token for {institution_name}..."
-            self._safe_log(self.status)
+            institution_id = self.sandbox_institution
 
-            # Use the sandbox_public_token_create method directly like in the working example
             sandbox_response = self.plaid_client.sandbox_public_token_create({
                 'institution_id': institution_id,
-                'initial_products': ['auth', 'transactions'],
+                'initial_products': ['auth', 'transactions', 'investments'],
             })
             public_token = sandbox_response['public_token']
-            self._safe_log(f"Received public token: {public_token[:10]}...")
 
             # Step 2: Exchange public token for access token
-            self._safe_log("Exchanging public token for access token")
             exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
-
             exchange_response = self.plaid_client.item_public_token_exchange(exchange_request)
             access_token = exchange_response['access_token']
-            self._safe_log(f"Received access token: {access_token[:10]}...")
 
             self._generated_access_token = access_token
-            self.status = f"Generated sandbox access token for {institution_name}"
-            self._safe_log(self.status)
 
             return access_token
 
         except Exception as e:
             error_msg = f"Failed to generate sandbox access token: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise ValueError(error_msg)
 
     def _get_access_token(self) -> str:
         """
         Get access token - either provided or auto-generated
         """
-        self._safe_log("Getting access token")
 
         # If access token is provided, use it
         if hasattr(self, "access_token") and self.access_token:
-            self._safe_log("Using provided access token")
             return self.access_token
 
         # If in sandbox and auto-generation is enabled, create one
         if self.environment == "sandbox" and getattr(
             self, "auto_generate_sandbox_token", True
         ):
-            self._safe_log("Auto-generating sandbox access token")
             return self._generate_sandbox_access_token()
 
         # Otherwise, raise error
         error_msg = "Access token is required. Either provide one or enable auto-generation for sandbox."
         self.status = error_msg
-        self._safe_log(error_msg)
         raise ValueError(error_msg)
 
     def _get_accounts(self) -> List[Dict]:
         """Get basic account information"""
-        self._safe_log("Retrieving account information")
 
         access_token = self._get_access_token()
         request = AccountsGetRequest(access_token=access_token)
@@ -247,9 +208,6 @@ class PlaidFinancialTool(Component):
             response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
             accounts_data = response_dict['accounts']
             
-            self._safe_log(
-                f"Retrieved {len(accounts_data)} accounts from Plaid API"
-            )
 
             accounts = []
             for account in accounts_data:
@@ -264,18 +222,15 @@ class PlaidFinancialTool(Component):
                 )
 
             self.status = f"Successfully retrieved {len(accounts)} accounts"
-            self._safe_log(self.status)
             return accounts
 
         except Exception as e:
             error_msg = f"Failed to get accounts: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise
 
     def _get_balances(self) -> List[Dict]:
         """Get account balances"""
-        self._safe_log("Retrieving account balances")
 
         access_token = self._get_access_token()
         request = AccountsBalanceGetRequest(access_token=access_token)
@@ -286,9 +241,6 @@ class PlaidFinancialTool(Component):
             response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
             accounts_data = response_dict['accounts']
             
-            self._safe_log(
-                f"Retrieved balances for {len(accounts_data)} accounts from Plaid API"
-            )
 
             balances = []
             for account in accounts_data:
@@ -302,25 +254,19 @@ class PlaidFinancialTool(Component):
                     "last_updated": datetime.now().isoformat(),
                 }
                 balances.append(balance_data)
-                self._safe_log(
-                    f"Account {account['name']}: {balance_data['current_balance']} {balance_data['currency']}"
-                )
 
             self.status = (
                 f"Successfully retrieved balances for {len(balances)} accounts"
             )
-            self._safe_log(self.status)
             return balances
 
         except Exception as e:
             error_msg = f"Failed to get balances: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise
 
     def _get_investments(self) -> Dict:
         """Get investment portfolio data"""
-        self._safe_log("Retrieving investment portfolio data")
 
         access_token = self._get_access_token()
         request = InvestmentsHoldingsGetRequest(access_token=access_token)
@@ -329,64 +275,110 @@ class PlaidFinancialTool(Component):
             response = self.plaid_client.investments_holdings_get(request)
             # Convert response to dict to access data properly
             response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
-            holdings_data = response_dict['holdings']
-            securities_data = response_dict['securities']
+            holdings_data = response_dict.get('holdings', [])
+            securities_data = response_dict.get('securities', [])
+            accounts_data = response_dict.get('accounts', [])
             
-            self._safe_log(
-                f"Retrieved {len(holdings_data)} holdings and {len(securities_data)} securities from Plaid API"
-            )
+            if not holdings_data:
+                return {
+                    "total_value": 0.0,
+                    "holdings_count": 0,
+                    "holdings": [],
+                    "accounts": [],
+                    "last_updated": datetime.now().isoformat(),
+                }
 
+            # Create lookup dictionaries
             securities = {sec["security_id"]: sec for sec in securities_data}
+            accounts_dict = {acc["account_id"]: acc for acc in accounts_data}
 
             holdings = []
             total_value = 0.0
+            total_cost_basis = 0.0
+            accounts_summary = {}
 
             for holding in holdings_data:
                 security = securities.get(holding["security_id"])
                 if not security:
-                    self._safe_log(
-                        f"Warning: Security not found for holding: {holding['security_id']}"
-                    )
                     continue
 
-                market_value = holding["quantity"] * holding["institution_price"]
+                # Calculate values
+                quantity = holding.get("quantity", 0)
+                institution_price = holding.get("institution_price", 0)
+                market_value = quantity * institution_price
+                cost_basis = holding.get("cost_basis", 0)
+                
                 total_value += market_value
+                if cost_basis:
+                    total_cost_basis += cost_basis
+
+                # Account information
+                account_id = holding["account_id"]
+                account_info = accounts_dict.get(account_id, {})
+                account_name = account_info.get("name", f"Investment Account {account_id[-4:]}")
+
+                # Track account summary
+                if account_id not in accounts_summary:
+                    accounts_summary[account_id] = {
+                        "account_id": account_id,
+                        "account_name": account_name,
+                        "total_value": 0.0,
+                        "holdings_count": 0
+                    }
+                accounts_summary[account_id]["total_value"] += market_value
+                accounts_summary[account_id]["holdings_count"] += 1
 
                 holding_data = {
-                    "account_id": holding["account_id"],
-                    "security_name": security["name"],
+                    "account_id": account_id,
+                    "account_name": account_name,
+                    "security_id": holding["security_id"],
+                    "security_name": security.get("name", "Unknown Security"),
                     "ticker_symbol": security.get("ticker_symbol"),
-                    "quantity": holding["quantity"],
-                    "current_price": holding["institution_price"],
+                    "security_type": security.get("type"),
+                    "quantity": quantity,
+                    "current_price": institution_price,
                     "market_value": market_value,
-                    "cost_basis": holding.get("cost_basis"),
-                    "currency": holding["iso_currency_code"] or "USD",
+                    "cost_basis": cost_basis,
+                    "currency": holding.get("iso_currency_code") or holding.get("unofficial_currency_code") or "USD",
                 }
-                holdings.append(holding_data)
-                self._safe_log(
-                    f"Holding {security['name']}: ${market_value:,.2f} {holding_data['currency']}"
-                )
 
+                # Calculate gain/loss if cost basis is available
+                if cost_basis and cost_basis > 0:
+                    gain_loss = market_value - cost_basis
+                    gain_loss_pct = (gain_loss / cost_basis) * 100
+                    holding_data["gain_loss"] = gain_loss
+                    holding_data["gain_loss_percent"] = gain_loss_pct
+
+                holdings.append(holding_data)
+
+            # Prepare result with comprehensive data
             result = {
                 "total_value": total_value,
+                "total_cost_basis": total_cost_basis if total_cost_basis > 0 else None,
                 "holdings_count": len(holdings),
+                "accounts_count": len(accounts_summary),
                 "holdings": holdings,
+                "accounts": list(accounts_summary.values()),
                 "last_updated": datetime.now().isoformat(),
             }
 
-            self.status = f"Successfully retrieved {len(holdings)} holdings worth ${total_value:,.2f}"
-            self._safe_log(self.status)
+            # Add overall portfolio performance if cost basis is available
+            if total_cost_basis > 0:
+                total_gain_loss = total_value - total_cost_basis
+                total_gain_loss_pct = (total_gain_loss / total_cost_basis) * 100
+                result["total_gain_loss"] = total_gain_loss
+                result["total_gain_loss_percent"] = total_gain_loss_pct
+
+            self.status = f"Successfully retrieved {len(holdings)} holdings across {len(accounts_summary)} accounts worth ${total_value:,.2f}"
             return result
 
         except Exception as e:
             error_msg = f"Failed to get investments: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise
 
     def _get_summary(self) -> Dict:
         """Get comprehensive financial summary"""
-        self._safe_log("Generating comprehensive financial summary")
 
         try:
             balances = self._get_balances()
@@ -403,10 +395,6 @@ class PlaidFinancialTool(Component):
                 if balance["account_type"] == "credit"
             )
 
-            self._safe_log(
-                f"Banking calculations - Deposits: ${banking_total:,.2f}, Credit: ${credit_total:,.2f}"
-            )
-
             summary = {
                 "timestamp": datetime.now().isoformat(),
                 "banking": {
@@ -418,32 +406,33 @@ class PlaidFinancialTool(Component):
             }
 
             try:
-                self._safe_log("Attempting to retrieve investment data for summary")
                 investments = self._get_investments()
                 summary["investments"] = investments
-                net_worth = banking_total - credit_total + investments["total_value"]
+                
+                investment_value = investments["total_value"]
+                net_worth = banking_total - credit_total + investment_value
                 summary["net_worth"] = net_worth
-                self._safe_log(
-                    f"Net worth calculation with investments: ${net_worth:,.2f}"
-                )
+                
+                # Add investment performance summary if available
+                if investments.get("total_cost_basis"):
+                    summary["investment_performance"] = {
+                        "total_gain_loss": investments.get("total_gain_loss", 0),
+                        "total_gain_loss_percent": investments.get("total_gain_loss_percent", 0)
+                    }
+                
             except Exception as e:
-                self._safe_log(f"Could not retrieve investment data: {str(e)}")
                 summary["net_worth"] = banking_total - credit_total
                 summary["investments"] = None
-                self._safe_log(
-                    f"Net worth calculation without investments: ${summary['net_worth']:,.2f}"
-                )
+                summary["investment_performance"] = None
 
             self.status = (
                 f"Generated financial summary - Net worth: ${summary['net_worth']:,.2f}"
             )
-            self._safe_log(self.status)
             return summary
 
         except Exception as e:
             error_msg = f"Failed to generate summary: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             raise
 
     def get_financial_data(
@@ -459,9 +448,6 @@ class PlaidFinancialTool(Component):
         Returns:
             Financial data as structured dict/list or JSON string
         """
-        self._safe_log(
-            f"get_financial_data() called with data_type='{data_type}', output_format='{output_format}'"
-        )
 
         try:
             self._setup_plaid_client()
@@ -469,22 +455,12 @@ class PlaidFinancialTool(Component):
             # Validate data_type
             valid_types = ["accounts", "balances", "investments", "summary"]
             if data_type not in valid_types:
-                self._safe_log(
-                    f"Invalid data_type '{data_type}', defaulting to 'summary'"
-                )
                 data_type = "summary"
 
             # Validate output_format
             valid_formats = ["structured", "json"]
             if output_format not in valid_formats:
-                self._safe_log(
-                    f"Invalid output_format '{output_format}', defaulting to 'structured'"
-                )
                 output_format = "structured"
-
-            self._safe_log(
-                f"Processing request for {data_type} data in {output_format} format"
-            )
 
             if data_type == "accounts":
                 raw_data = self._get_accounts()
@@ -509,13 +485,11 @@ class PlaidFinancialTool(Component):
             self.status = (
                 f"Successfully processed {data_type} request ({len(result)} characters)"
             )
-            self._safe_log(self.status)
             return result
 
         except Exception as e:
             error_msg = f"Failed to retrieve {data_type}: {str(e)}"
             self.status = error_msg
-            self._safe_log(error_msg)
             # Return structured error data instead of raising exception
             return json.dumps(
                 {
