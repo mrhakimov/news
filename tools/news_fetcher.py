@@ -47,6 +47,7 @@ class AlphaVantageNewsTool(Component):
     def fetch_news_sentiment(self, data, api_key):
         """
         Fetches news sentiment data from Alpha Vantage based on provided categories.
+        Also fetches local news data and merges the results.
 
         Parameters:
             data (dict): A dictionary with a key "relevant_categories" whose value is a list of category strings.
@@ -73,7 +74,7 @@ class AlphaVantageNewsTool(Component):
             api_key (str): Your Alpha Vantage API key. Defaults to 'demo'.
 
         Returns:
-            dict: The JSON response from the Alpha Vantage API.
+            dict: The JSON response from the Alpha Vantage API with local news added to the feed.
         """
         # Extract unique categories
         categories = list(set(data.get("relevant_categories", [])))
@@ -81,10 +82,52 @@ class AlphaVantageNewsTool(Component):
         topics = ",".join(categories)
         # Build the URL
         url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics={topics}&apikey={api_key}"
-        # Make the request
-        response = requests.get(url)
-        # Return the JSON response
-        return response.json()
+        
+        # Make the Alpha Vantage request
+        try:
+            alpha_vantage_response = requests.get(url)
+            alpha_vantage_data = alpha_vantage_response.json()
+            
+            # Check if Alpha Vantage response is empty or has no feed
+            if not alpha_vantage_data or "feed" not in alpha_vantage_data or len(alpha_vantage_data.get("feed", [])) == 0:
+                print("Warning: Alpha Vantage returned empty response, falling back to local news")
+                alpha_vantage_data = {"feed": [], "items": [], "sentiment_score_definition": "", "relevance_score_definition": ""}
+                
+        except Exception as e:
+            print(f"Warning: Could not fetch Alpha Vantage data: {e}, falling back to local news")
+            alpha_vantage_data = {"feed": [], "items": [], "sentiment_score_definition": "", "relevance_score_definition": ""}
+        
+        # Make the local news API request
+        try:
+            local_news_response = requests.get("http://localhost:5050/news")
+            local_news_data = local_news_response.json()
+            
+            # Convert local news articles to Alpha Vantage format and add to feed
+            if "feed" in alpha_vantage_data and "articles" in local_news_data:
+                for article in local_news_data["articles"]:
+                    # Convert local article to Alpha Vantage format
+                    alpha_vantage_article = {
+                        "title": article.get("title", ""),
+                        "url": article.get("url", ""),
+                        "time_published": article.get("time_published", ""),
+                        "authors": article.get("authors", []),
+                        "summary": article.get("summary", ""),
+                        "banner_image": article.get("banner_image", ""),
+                        "source": article.get("source", ""),
+                        "category_within_source": article.get("category_within_source", ""),
+                        "source_domain": article.get("source_domain", ""),
+                        "topics": article.get("topics", []),
+                        "overall_sentiment_score": article.get("overall_sentiment_score", 0.0),
+                        "overall_sentiment_label": article.get("overall_sentiment_label", "Neutral"),
+                        "ticker_sentiment": article.get("ticker_sentiment", [])
+                    }
+                    alpha_vantage_data["feed"].append(alpha_vantage_article)
+                    
+        except requests.exceptions.RequestException as e:
+            print(f"Warning: Could not fetch local news data: {e}")
+        
+        # Return the original Alpha Vantage response format (now with local news added)
+        return alpha_vantage_data
 
     def fetch_news(self) -> Data:
         """Alpha Vantage News tool for agent"""
