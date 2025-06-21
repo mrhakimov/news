@@ -24,17 +24,36 @@ export async function POST(req: NextRequest) {
     // Call your langflow API
     const response = await fetch("http://localhost:7860/api/v1/run/2b1ef68b-9cf7-4bb6-b3d8-1a809a4e6070", options)
     const data = await response.json()
-
     // Extract the response text from langflow
-    const responseText =
-      data.outputs?.[0]?.outputs?.[0]?.results?.message?.text ||
-      data.message ||
-      "I'm sorry, I couldn't process that request."
+    let responseText = "I'm sorry, I couldn't process that request."
+    let suggestions = []
 
-    // Return simple JSON response for now
+    try {
+      const rawText = data.outputs?.[0]?.outputs?.[0]?.results?.message?.text || data.message
+      
+      if (rawText) {
+        // Parse the stringified JSON from langflow
+        const parsedData = JSON.parse(rawText)
+        console.log("=== PARSED LANGFLOW DATA ===")
+        console.log(JSON.stringify(parsedData, null, 2))
+        console.log("=== END PARSED DATA ===")
+        
+        if (parsedData.results && parsedData.results.length > 0) {
+          responseText = parsedData.results[0].response || responseText
+          suggestions = parsedData.results[0].metadata?.suggestions || []
+        }
+      }
+    } catch (parseError) {
+      console.error("Error parsing langflow response:", parseError)
+      // Fallback to raw text if parsing fails
+      responseText = data.outputs?.[0]?.outputs?.[0]?.results?.message?.text || data.message || responseText
+    }
+
+    // Return response with suggestions
     return NextResponse.json({
       role: "assistant",
       content: responseText,
+      suggestions: suggestions,
     })
   } catch (error) {
     console.error("Error calling langflow:", error)
