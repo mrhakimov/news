@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Send, User } from "lucide-react"
-import { FinancialChart } from "./components/financial-chart"
 import { FollowUpSuggestions } from "./components/follow-up-suggestions"
 import { ConfirmAction } from "./components/confirm-action"
 import { MarkdownRenderer } from "./components/markdown-renderer"
@@ -44,9 +43,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [loadingStartTime, setLoadingStartTime] = useState(0)
-  const [showChart, setShowChart] = useState(false)
-  const [chartData, setChartData] = useState<any[]>([])
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,6 +74,14 @@ export default function ChatPage() {
       })
 
       const data = await response.json()
+      console.log("=== CHAT DATA (handleSubmit) ===")
+      console.log(JSON.stringify(data, null, 2))
+      console.log("=== END CHAT DATA ===")
+
+      // Extract suggestions from the response if available
+      if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        setDynamicSuggestions(data.suggestions)
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -87,19 +93,6 @@ export default function ChatPage() {
 
       // Check if response contains financial data or action requests
       const content = data.content.toLowerCase()
-
-      if (content.includes("portfolio") || content.includes("investment") || content.includes("stock")) {
-        const sampleData = [
-          { name: "Jan", value: 4000, growth: 2400 },
-          { name: "Feb", value: 3000, growth: 1398 },
-          { name: "Mar", value: 2000, growth: 9800 },
-          { name: "Apr", value: 2780, growth: 3908 },
-          { name: "May", value: 1890, growth: 4800 },
-          { name: "Jun", value: 2390, growth: 3800 },
-        ]
-        setChartData(sampleData)
-        setShowChart(true)
-      }
 
       if (content.includes("confirm") || content.includes("execute") || content.includes("proceed")) {
         setPendingAction(data.content)
@@ -125,10 +118,15 @@ export default function ChatPage() {
 
   const followUpSuggestions = [
     "Show me my portfolio performance",
-    "What are the latest market trends?",
+    "How current market events impact my portfolio and what should I do?",
     "Analyze my investment risk",
     "Suggest budget optimizations",
   ]
+
+  // Get suggestions - use dynamic ones if available, otherwise fall back to defaults
+  const getSuggestions = () => {
+    return dynamicSuggestions.length > 0 ? dynamicSuggestions : followUpSuggestions
+  }
 
   const handleFollowUp = async (suggestion: string) => {
     if (isLoading) return
@@ -144,6 +142,7 @@ export default function ChatPage() {
     setLoadingStartTime(Date.now())
 
     try {
+      console.log("=== I AM HERE ===")
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -156,6 +155,14 @@ export default function ChatPage() {
       })
 
       const data = await response.json()
+      console.log("=== CHAT DATA ===")
+      console.log(JSON.stringify(data, null, 2))
+      console.log("=== END CHAT DATA ===")
+
+      // Extract suggestions from the response if available
+      if (data.suggestions && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        setDynamicSuggestions(data.suggestions)
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -167,19 +174,6 @@ export default function ChatPage() {
 
       // Check if response contains financial data or action requests
       const content = data.content.toLowerCase()
-
-      if (content.includes("portfolio") || content.includes("investment") || content.includes("stock")) {
-        const sampleData = [
-          { name: "Jan", value: 4000, growth: 2400 },
-          { name: "Feb", value: 3000, growth: 1398 },
-          { name: "Mar", value: 2000, growth: 9800 },
-          { name: "Apr", value: 2780, growth: 3908 },
-          { name: "May", value: 1890, growth: 4800 },
-          { name: "Jun", value: 2390, growth: 3800 },
-        ]
-        setChartData(sampleData)
-        setShowChart(true)
-      }
 
       if (content.includes("confirm") || content.includes("execute") || content.includes("proceed")) {
         setPendingAction(data.content)
@@ -226,7 +220,7 @@ export default function ChatPage() {
                   <p className="text-gray-400 mb-6">
                     Your AI-powered financial assistant. Ask me about your finances, investments, or market trends.
                   </p>
-                  <FollowUpSuggestions suggestions={followUpSuggestions} onSuggestionClick={handleFollowUp} />
+                  <FollowUpSuggestions suggestions={getSuggestions()} onSuggestionClick={handleFollowUp} />
                 </div>
               )}
 
@@ -253,11 +247,6 @@ export default function ChatPage() {
                       </CardContent>
                     </Card>
 
-                    {/* Show chart if this is the last AI message and chart should be shown */}
-                    {message.role === "assistant" && message.id === messages[messages.length - 1]?.id && showChart && (
-                      <FinancialChart data={chartData} />
-                    )}
-
                     {/* Show confirm action if this is the last AI message and there's a pending action */}
                     {message.role === "assistant" && message.id === messages[messages.length - 1]?.id && pendingAction && (
                       <ConfirmAction
@@ -269,7 +258,7 @@ export default function ChatPage() {
 
                     {/* Show follow-up suggestions for the last AI message */}
                     {message.role === "assistant" && message.id === messages[messages.length - 1]?.id && !isLoading && (
-                      <FollowUpSuggestions suggestions={followUpSuggestions} onSuggestionClick={handleFollowUp} />
+                      <FollowUpSuggestions suggestions={getSuggestions()} onSuggestionClick={handleFollowUp} />
                     )}
                   </div>
                 </div>

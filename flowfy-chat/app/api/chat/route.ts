@@ -22,8 +22,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Call your langflow API
-    const response = await fetch("http://localhost:7860/api/v1/run/2b1ef68b-9cf7-4bb6-b3d8-1a809a4e6070", options)
+    const response = await fetch("http://localhost:7868/api/v1/run/09d604c2-99a3-4c1e-9517-082bc7960038", options)
     const data = await response.json()
+    // console.log("=== LANGFLOW DATA ===")
+    // console.log(JSON.stringify(data, null, 2))
+    // console.log("=== END LANGFLOW DATA ===")
     // Extract the response text from langflow
     let responseText = "I'm sorry, I couldn't process that request."
     let suggestions = []
