@@ -64,6 +64,22 @@ Instructions:
   - Prioritize actions that are urgent, time-sensitive, or offer the greatest financial benefit.
   - If no action is needed for a news item or financial data point, do not include it.
   - Keep the recommendations short, clear, and in plain English.
+  - Prioritize news articles from the past 72 hours; deprioritize older articles unless they relate to long-term trends (e.g., interest rates, student loan policy).
+  - If multiple news articles lead to the same recommendation, merge them into one action with a unified rationale.
+  - If your recommendation is based on incomplete data (e.g., stock cost basis missing), mark the action’s confidence as "medium" or "low" and suggest a next step to verify.
+  - Tailor your recommendations based on the user's risk profile and financial goals if provided.
+
+
+
+Use `plaid` if:
+- Account balances may have changed significantly
+- You need details on a specific loan, credit card, or bank account not included in the static profile
+- You want to verify current cost basis or asset valuation
+
+Use `news` if:
+- A ticker in the user's portfolio is mentioned in a news item but the article is vague or has low confidence
+- The sentiment is mixed or conflicting across news items
+- The article is marked “breaking,” “developing,” or published over 2 days ago
 
 IMPORTANT: Always consider tool use **before** finalizing your response. If you’re uncertain, check the data via `plaid` or `news` to ensure accuracy and relevancy.
 </instructions>
@@ -86,6 +102,11 @@ IMPORTANT: Always consider tool use **before** finalizing your response. If you�
 ]
 ```
 </output_format>
+
+You can also add an optional field to <output_format>:
+```json
+"confidence": "high | medium | low"
+```
 
 Now, generate the list of action items for the user. If no action is needed, return an empty array.
 
