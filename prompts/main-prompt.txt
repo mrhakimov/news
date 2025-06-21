@@ -51,7 +51,8 @@ Your response must be a list of action items, each with:**
 There are tools available for you:
 <tools>
 plaid - tool to access user financial data (e.g., updated balances, loans, transaction history, account metadata)  
-news - tool to access live financial news and deeper details on recent events or stock performance
+fetch_news - tool to access live financial news and deeper details on recent events or stock performance
+classify_news - tool to classify news on categories based on users financial accounts
 </tools>
 
 <instructions>

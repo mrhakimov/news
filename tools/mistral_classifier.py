@@ -1,7 +1,7 @@
 from langchain_mistralai import ChatMistralAI
 from pydantic.v1 import SecretStr
 import json
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 from langflow.custom import Component
 from langflow.io import StrInput, SecretStrInput, DropdownInput, BoolInput, Output, MultilineInput
@@ -15,7 +15,126 @@ class MistralNewsClassifierComponent(Component):
     A custom tool component that uses MistralAI to classify news categories
     based on user's financial profile including accounts, loans, and investments.
     """
-    
+    prompt = """
+        You are a financial news categorization expert. Your task is to analyze a user's financial profile and interests to determine which news categories would be most relevant to them.
+
+        ## Available News Categories:
+        - blockchain: Blockchain and cryptocurrency news
+        - earnings: Company earnings reports and analysis
+        - ipo: Initial Public Offerings and new stock listings  
+        - mergers_and_acquisitions: M&A activity and corporate deals
+        - financial_markets: General financial market movements and analysis
+        - economy_fiscal: Government fiscal policy, taxes, spending
+        - economy_monetary: Central bank policy, interest rates, money supply
+        - economy_macro: Overall economic indicators, GDP, employment
+        - energy_transportation: Energy sector and transportation industry
+        - finance: General finance, banking, lending
+        - life_sciences: Biotechnology, healthcare, pharmaceuticals
+        - manufacturing: Manufacturing and industrial sector
+        - real_estate: Real estate markets and construction
+        - retail_wholesale: Retail and wholesale trade sectors
+        - technology: Technology sector and innovation
+
+        ## Instructions:
+        You will receive user financial data in JSON format containing some or all of these fields:
+        - accounts: List of account types (investment, bank, crypto, retirement, etc.)
+        - credit_cards: Credit card information
+        - loans: Loan information (student_loan, mortgage, etc.)
+        - investments: Investment types (stock, crypto, etf, etc.)
+
+        You may also receive a user statement describing their financial goals and interests.
+
+        ## Categorization Logic:
+
+        **Account Type Mapping:**
+        - crypto accounts → blockchain
+        - investment accounts → earnings, ipo, mergers_and_acquisitions, financial_markets, technology
+        - retirement accounts → economy_macro, economy_monetary, financial_markets
+        - bank accounts → finance, economy_macro
+        - real_estate accounts → real_estate
+        - energy accounts → energy_transportation
+        - manufacturing accounts → manufacturing
+        - retail accounts → retail_wholesale
+        - life_sciences accounts → life_sciences
+
+        **Credit Cards:**
+        - Any credit cards → economy_monetary, finance
+
+        **Loans:**
+        - student_loan → economy_fiscal, finance
+        - mortgage → real_estate, economy_monetary
+        - other loans → finance, economy_fiscal
+
+        **Investments:**
+        - crypto investments → blockchain
+        - stock/etf investments → earnings, ipo, mergers_and_acquisitions, financial_markets, technology
+
+        **User Statement Keywords:**
+        Look for these keywords in the user statement and map them:
+        - crypto/bitcoin/ethereum → blockchain
+        - stock/invest → financial_markets
+        - retire/retirement → economy_macro
+        - mortgage/house/home → real_estate
+        - loan/debt → finance
+        - save/saving → economy_monetary
+        - interest rate/inflation → economy_monetary
+        - tax → economy_fiscal
+        - job/employment → economy_macro
+        - energy → energy_transportation
+        - tech/technology → technology
+        - manufacturing → manufacturing
+        - retail → retail_wholesale
+        - biotech/health → life_sciences
+
+        ## Output Format:
+        Return your response as a JSON object with this exact structure:
+        ```json
+        {
+        "relevant_categories": ["category1", "category2", "category3", ...]
+        }
+        ```
+
+        ## Prioritization Rules:
+        1. Always include "economy_macro" as a baseline category
+        2. Prioritize categories based on the user's most prominent financial activities:
+        - Student loans and mortgages (highest priority if present)
+        - Investment and crypto accounts  
+        - Credit cards and other loans
+        - Bank accounts (lowest priority)
+        3. Categories mentioned in the user statement should be highly prioritized
+        4. Remove duplicates and order by relevance
+
+        ## Example:
+        Input:
+        ```json
+        {
+        "accounts": [{"type": "investment"}, {"type": "crypto"}],
+        "loans": [{"type": "student_loan"}],
+        "investments": [{"type": "stock"}, {"type": "crypto"}]
+        }
+        ```
+        User statement: "I want to pay off my student loans and invest in tech stocks"
+
+        Output:
+        ```json
+        {
+        "relevant_categories": [
+            "economy_fiscal",
+            "finance", 
+            "blockchain",
+            "earnings",
+            "financial_markets",
+            "technology",
+            "ipo",
+            "mergers_and_acquisitions",
+            "economy_macro"
+        ]
+        }
+        ```
+
+        Now analyze the provided user financial data and statement to generate the most relevant news categories. 
+
+    """
     display_name = "MistralAI News Classifier"
     description = "Classifies news categories based on user's financial profile using MistralAI"
     icon = "🏷️"
@@ -99,19 +218,6 @@ class MistralNewsClassifierComponent(Component):
             )
         return self._mistral_client
         
-    def _load_categorization_prompt(self) -> str:
-        """Load the categorization prompt from file"""
-        try:
-            with open("prompts/categorization_prompt.txt", "r") as f:
-                return f.read()
-        except FileNotFoundError:
-            # Fallback prompt if file not found
-            return """You are a financial news categorization expert. Analyze the user's financial profile and determine which news categories would be most relevant.
-
-Available categories: blockchain, earnings, ipo, mergers_and_acquisitions, financial_markets, economy_fiscal, economy_monetary, economy_macro, energy_transportation, finance, life_sciences, manufacturing, real_estate, retail_wholesale, technology
-
-Return JSON format: {"relevant_categories": ["category1", "category2", ...]}"""
-    
     def _parse_input_data(self, accounts: str, loans: str, investments: str) -> Dict[str, Any]:
         """Parse and normalize input data into consistent format"""
         user_data = {}
@@ -119,14 +225,11 @@ Return JSON format: {"relevant_categories": ["category1", "category2", ...]}"""
         # Parse accounts
         if accounts:
             try:
-                if isinstance(accounts, str):
-                    if accounts.startswith('[') or accounts.startswith('{'):
-                        parsed_accounts = json.loads(accounts)
-                    else:
-                        # Handle comma-separated string
-                        parsed_accounts = [{"type": acc.strip()} for acc in accounts.split(',')]
+                if accounts.startswith('[') or accounts.startswith('{'):
+                    parsed_accounts = json.loads(accounts)
                 else:
-                    parsed_accounts = accounts
+                    # Handle comma-separated string
+                    parsed_accounts = [{"type": acc.strip()} for acc in accounts.split(',')]
                 user_data['accounts'] = parsed_accounts
             except (json.JSONDecodeError, TypeError):
                 user_data['accounts'] = [{"type": accounts}]
@@ -134,13 +237,10 @@ Return JSON format: {"relevant_categories": ["category1", "category2", ...]}"""
         # Parse loans  
         if loans:
             try:
-                if isinstance(loans, str):
-                    if loans.startswith('[') or loans.startswith('{'):
-                        parsed_loans = json.loads(loans)
-                    else:
-                        parsed_loans = [{"type": loan.strip()} for loan in loans.split(',')]
+                if loans.startswith('[') or loans.startswith('{'):
+                    parsed_loans = json.loads(loans)
                 else:
-                    parsed_loans = loans
+                    parsed_loans = [{"type": loan.strip()} for loan in loans.split(',')]
                 user_data['loans'] = parsed_loans
             except (json.JSONDecodeError, TypeError):
                 user_data['loans'] = [{"type": loans}]
@@ -148,13 +248,10 @@ Return JSON format: {"relevant_categories": ["category1", "category2", ...]}"""
         # Parse investments
         if investments:
             try:
-                if isinstance(investments, str):
-                    if investments.startswith('[') or investments.startswith('{'):
-                        parsed_investments = json.loads(investments)
-                    else:
-                        parsed_investments = [{"type": inv.strip()} for inv in investments.split(',')]
+                if investments.startswith('[') or investments.startswith('{'):
+                    parsed_investments = json.loads(investments)
                 else:
-                    parsed_investments = investments
+                    parsed_investments = [{"type": inv.strip()} for inv in investments.split(',')]
                 user_data['investments'] = parsed_investments
             except (json.JSONDecodeError, TypeError):
                 user_data['investments'] = [{"type": investments}]
@@ -172,16 +269,16 @@ Return JSON format: {"relevant_categories": ["category1", "category2", ...]}"""
             )
             
             # Build the prompt
-            system_prompt = self._load_categorization_prompt()
+            system_prompt = self.prompt
             
             user_message = f"""
-User Financial Data:
-{json.dumps(user_data, indent=2)}
+                User Financial Data:
+                {json.dumps(user_data, indent=2)}
 
-User Statement: {getattr(self, 'user_statement', '') or 'No specific statement provided'}
+                User Statement: {getattr(self, 'user_statement', '') or 'No specific statement provided'}
 
-Please analyze this data and return the relevant news categories in JSON format.
-"""
+                Please analyze this data and return the relevant news categories in JSON format.
+            """
             
             # Get MistralAI client and make the request
             client = self._get_mistral_client()
