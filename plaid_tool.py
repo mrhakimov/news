@@ -22,7 +22,6 @@ from plaid.model.investments_holdings_get_request import InvestmentsHoldingsGetR
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
 )
-from plaid.model.products import Products
 
 
 class PlaidFinancialTool(Component):
@@ -91,8 +90,8 @@ class PlaidFinancialTool(Component):
         StrInput(
             name="output_format",
             display_name="Output Format",
-            info="Format for the returned data: structured, json, or text",
-            value="text",
+            info="Format for the returned data: structured or json",
+            value="structured",
             tool_mode=True,
         ),
     ]
@@ -447,82 +446,18 @@ class PlaidFinancialTool(Component):
             self._safe_log(error_msg)
             raise
 
-    def _format_output(self, data: Any, format_type: str) -> Any:
-        """Format output based on selected format"""
-        self._safe_log(f"Formatting output as {format_type}")
-
-        if format_type == "json":
-            return json.dumps(data, indent=2, default=str)
-        elif format_type == "text":
-            return self._format_as_text(data)
-        else:
-            return data
-
-    def _format_as_text(self, data: Any, data_type: str) -> str:
-        """Format data as human-readable text"""
-        self._safe_log(f"Formatting {data_type} data as human-readable text")
-
-        if data_type == "accounts":
-            text = "ACCOUNT INFORMATION\n" + "=" * 50 + "\n"
-            for account in data:
-                text += f"Account: {account['name']}\n"
-                text += f"Type: {account['type']}\n"
-                text += f"ID: {account['account_id']}\n"
-                text += "-" * 30 + "\n"
-
-        elif data_type == "balances":
-            text = "ACCOUNT BALANCES\n" + "=" * 50 + "\n"
-            for balance in data:
-                text += f"Account: {balance['account_name']}\n"
-                text += f"Balance: {balance['currency']} {balance['current_balance']:,.2f}\n"
-                if balance["available_balance"]:
-                    text += f"Available: {balance['currency']} {balance['available_balance']:,.2f}\n"
-                text += "-" * 30 + "\n"
-
-        elif data_type == "investments":
-            text = "INVESTMENT PORTFOLIO\n" + "=" * 50 + "\n"
-            text += f"Total Value: ${data['total_value']:,.2f}\n"
-            text += f"Holdings: {data['holdings_count']}\n"
-            text += "-" * 50 + "\n"
-
-            for holding in data["holdings"][:5]:
-                text += f"Security: {holding['security_name']}\n"
-                if holding["ticker_symbol"]:
-                    text += f"Ticker: {holding['ticker_symbol']}\n"
-                text += f"Value: ${holding['market_value']:,.2f}\n"
-                text += "-" * 30 + "\n"
-
-        elif data_type == "summary":
-            text = "FINANCIAL SUMMARY\n" + "=" * 50 + "\n"
-            text += f"Net Worth: ${data['net_worth']:,.2f}\n"
-            text += f"Bank Deposits: ${data['banking']['total_deposits']:,.2f}\n"
-            text += f"Credit Balances: ${data['banking']['total_credit']:,.2f}\n"
-
-            if data["investments"]:
-                text += (
-                    f"Investment Value: ${data['investments']['total_value']:,.2f}\n"
-                )
-
-            text += f"Bank Accounts: {data['banking']['account_count']}\n"
-
-        else:
-            text = str(data)
-
-        self._safe_log(f"Generated {len(text)} characters of formatted text output")
-        return text
-
     def get_financial_data(
-        self, data_type: str = "summary", output_format: str = "text"
-    ) -> str:
+        self, data_type: str = "summary", output_format: str = "structured"
+    ) -> Any:
         """
         Tool method to retrieve financial data from Plaid API
 
         Args:
             data_type: Type of data to retrieve (accounts, balances, investments, summary)
-            output_format: Format of output (structured, json, text)
+            output_format: Format of output (structured, json)
 
         Returns:
-            Formatted financial data as string
+            Financial data as structured dict/list or JSON string
         """
         self._safe_log(
             f"get_financial_data() called with data_type='{data_type}', output_format='{output_format}'"
@@ -540,12 +475,12 @@ class PlaidFinancialTool(Component):
                 data_type = "summary"
 
             # Validate output_format
-            valid_formats = ["structured", "json", "text"]
+            valid_formats = ["structured", "json"]
             if output_format not in valid_formats:
                 self._safe_log(
-                    f"Invalid output_format '{output_format}', defaulting to 'text'"
+                    f"Invalid output_format '{output_format}', defaulting to 'structured'"
                 )
-                output_format = "text"
+                output_format = "structured"
 
             self._safe_log(
                 f"Processing request for {data_type} data in {output_format} format"
@@ -566,12 +501,10 @@ class PlaidFinancialTool(Component):
             else:
                 raise ValueError(f"Unsupported data type: {data_type}")
 
-            if output_format == "text":
-                result = self._format_as_text(raw_data, data_type)
-            elif output_format == "json":
+            if output_format == "json":
                 result = json.dumps(raw_data, indent=2, default=str)
-            else:
-                result = str(raw_data)
+            else:  # structured format
+                result = raw_data
 
             self.status = (
                 f"Successfully processed {data_type} request ({len(result)} characters)"
