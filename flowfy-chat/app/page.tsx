@@ -111,8 +111,70 @@ export default function ChatPage() {
     "Suggest budget optimizations",
   ]
 
-  const handleFollowUp = (suggestion: string) => {
-    setInput(suggestion)
+  const handleFollowUp = async (suggestion: string) => {
+    if (isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: suggestion,
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMessage],
+          sessionId,
+        }),
+      })
+
+      const data = await response.json()
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.content,
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+
+      // Check if response contains financial data or action requests
+      const content = data.content.toLowerCase()
+
+      if (content.includes("portfolio") || content.includes("investment") || content.includes("stock")) {
+        const sampleData = [
+          { name: "Jan", value: 4000, growth: 2400 },
+          { name: "Feb", value: 3000, growth: 1398 },
+          { name: "Mar", value: 2000, growth: 9800 },
+          { name: "Apr", value: 2780, growth: 3908 },
+          { name: "May", value: 1890, growth: 4800 },
+          { name: "Jun", value: 2390, growth: 3800 },
+        ]
+        setChartData(sampleData)
+        setShowChart(true)
+      }
+
+      if (content.includes("confirm") || content.includes("execute") || content.includes("proceed")) {
+        setPendingAction(data.content)
+      }
+    } catch (error) {
+      console.error("Error:", error)
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "Sorry, I encountered an error. Please try again.",
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleConfirmAction = () => {
