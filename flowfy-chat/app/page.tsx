@@ -14,6 +14,23 @@ import { FollowUpSuggestions } from "./components/follow-up-suggestions"
 import { ConfirmAction } from "./components/confirm-action"
 import { MarkdownRenderer } from "./components/markdown-renderer"
 
+// Add ThinkingTimer component before the main component
+const ThinkingTimer = ({ startTime }: { startTime: number }) => {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [startTime])
+
+  return (
+    <span className="text-xs text-gray-500 ml-auto">{elapsed}s</span>
+  )
+}
+
 interface Message {
   id: string
   role: "user" | "assistant"
@@ -26,6 +43,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingStartTime, setLoadingStartTime] = useState(0)
   const [showChart, setShowChart] = useState(false)
   const [chartData, setChartData] = useState<any[]>([])
   const [pendingAction, setPendingAction] = useState<string | null>(null)
@@ -43,6 +61,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
+    setLoadingStartTime(Date.now())
 
     try {
       const response = await fetch("/api/chat", {
@@ -122,6 +141,7 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
     setIsLoading(true)
+    setLoadingStartTime(Date.now())
 
     try {
       const response = await fetch("/api/chat", {
@@ -272,19 +292,22 @@ export default function ChatPage() {
               </Avatar>
               <Card className="flex-1 bg-stone-800 border-stone-700">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                      <span className="text-sm text-gray-400">flowfy is thinking...</span>
                     </div>
-                    <span className="text-sm text-gray-400">flowfy is thinking...</span>
+                    <ThinkingTimer startTime={loadingStartTime} />
                   </div>
                 </CardContent>
               </Card>
