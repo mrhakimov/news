@@ -19,6 +19,7 @@ from plaid.api import plaid_api
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 from plaid.model.investments_holdings_get_request import InvestmentsHoldingsGetRequest
+from plaid.model.liabilities_get_request import LiabilitiesGetRequest
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
 )
@@ -83,7 +84,7 @@ class PlaidFinancialTool(Component):
         StrInput(
             name="data_type",
             display_name="Data Type",
-            info="Type of financial data to retrieve: accounts, balances, investments, or summary",
+            info="Type of financial data to retrieve: accounts, balances, investments, liabilities, or summary",
             value="summary",
             tool_mode=True,
         ),
@@ -158,7 +159,7 @@ class PlaidFinancialTool(Component):
 
             sandbox_response = self.plaid_client.sandbox_public_token_create({
                 'institution_id': institution_id,
-                'initial_products': ['auth', 'transactions', 'investments'],
+                'initial_products': ['auth', 'transactions', 'investments', 'liabilities'],
             })
             public_token = sandbox_response['public_token']
 
@@ -377,6 +378,156 @@ class PlaidFinancialTool(Component):
             self.status = error_msg
             raise
 
+    def _get_liabilities(self) -> Dict:
+        """Get liabilities data (loans, mortgages, credit cards, etc.)"""
+
+        access_token = self._get_access_token()
+        request = LiabilitiesGetRequest(access_token=access_token)
+
+        try:
+            response = self.plaid_client.liabilities_get(request)
+            # Convert response to dict to access data properly
+            response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
+            liabilities_data = response_dict.get('liabilities', {})
+            accounts_data = response_dict.get('accounts', [])
+            
+            # Create accounts lookup
+            accounts_dict = {acc["account_id"]: acc for acc in accounts_data}
+            
+            # Process different types of liabilities
+            result = {
+                "total_debt": 0.0,
+                "liability_count": 0,
+                "accounts_count": len(accounts_data),
+                "mortgages": [],
+                "student_loans": [],
+                "credit_cards": [],
+                "other_liabilities": [],
+                "last_updated": datetime.now().isoformat(),
+            }
+
+            # Process mortgages
+            if liabilities_data.get('mortgage'):
+                for mortgage in liabilities_data['mortgage']:
+                    account_id = mortgage.get('account_id')
+                    account_info = accounts_dict.get(account_id, {})
+                    
+                    mortgage_data = {
+                        "account_id": account_id,
+                        "account_name": account_info.get("name", f"Mortgage {account_id[-4:] if account_id else 'Unknown'}"),
+                        "current_balance": mortgage.get('current_late_fee', 0) + mortgage.get('escrow_balance', 0),
+                        "last_payment_amount": mortgage.get('last_payment_amount'),
+                        "last_payment_date": mortgage.get('last_payment_date'),
+                        "next_payment_due_date": mortgage.get('next_payment_due_date'),
+                        "ytd_interest_paid": mortgage.get('ytd_interest_paid'),
+                        "ytd_principal_paid": mortgage.get('ytd_principal_paid'),
+                        "interest_rate": mortgage.get('interest_rate', {}).get('percentage'),
+                        "loan_type": mortgage.get('loan_type_description'),
+                        "maturity_date": mortgage.get('maturity_date'),
+                        "origination_date": mortgage.get('origination_date'),
+                        "origination_principal_amount": mortgage.get('origination_principal_amount'),
+                        "property_address": mortgage.get('property_address'),
+                    }
+                    
+                    # Add to total debt (using account balance if available)
+                    if account_info.get('balances', {}).get('current'):
+                        debt_amount = abs(account_info['balances']['current'])
+                        mortgage_data['outstanding_balance'] = debt_amount
+                        result["total_debt"] += debt_amount
+                    
+                    result["mortgages"].append(mortgage_data)
+                    result["liability_count"] += 1
+
+            # Process student loans
+            if liabilities_data.get('student'):
+                for loan in liabilities_data['student']:
+                    account_id = loan.get('account_id')
+                    account_info = accounts_dict.get(account_id, {})
+                    
+                    loan_data = {
+                        "account_id": account_id,
+                        "account_name": account_info.get("name", f"Student Loan {account_id[-4:] if account_id else 'Unknown'}"),
+                        "loan_name": loan.get('loan_name'),
+                        "loan_status": loan.get('loan_status', {}).get('type'),
+                        "minimum_payment_amount": loan.get('minimum_payment_amount'),
+                        "next_payment_due_date": loan.get('next_payment_due_date'),
+                        "origination_date": loan.get('origination_date'),
+                        "origination_principal_amount": loan.get('origination_principal_amount'),
+                        "outstanding_interest_amount": loan.get('outstanding_interest_amount'),
+                        "payment_reference_number": loan.get('payment_reference_number'),
+                        "interest_rate": loan.get('interest_rate_percentage'),
+                        "is_overdue": loan.get('is_overdue'),
+                        "last_payment_amount": loan.get('last_payment_amount'),
+                        "last_payment_date": loan.get('last_payment_date'),
+                        "last_statement_issue_date": loan.get('last_statement_issue_date'),
+                        "guarantor": loan.get('guarantor'),
+                        "repayment_plan": loan.get('repayment_plan', {}).get('description'),
+                        "servicer_address": loan.get('servicer_address'),
+                    }
+                    
+                    # Add to total debt (using account balance if available)
+                    if account_info.get('balances', {}).get('current'):
+                        debt_amount = abs(account_info['balances']['current'])
+                        loan_data['outstanding_balance'] = debt_amount
+                        result["total_debt"] += debt_amount
+                    
+                    result["student_loans"].append(loan_data)
+                    result["liability_count"] += 1
+
+            # Process credit cards (from accounts with credit type)
+            credit_accounts = [acc for acc in accounts_data if acc.get('type') == 'credit']
+            for account in credit_accounts:
+                balances = account.get('balances', {})
+                credit_data = {
+                    "account_id": account['account_id'],
+                    "account_name": account.get('name', f"Credit Card {account['account_id'][-4:]}"),
+                    "current_balance": abs(balances.get('current', 0)),
+                    "available_credit": balances.get('available'),
+                    "credit_limit": balances.get('limit'),
+                    "currency": balances.get('iso_currency_code') or 'USD',
+                    "last_updated": datetime.now().isoformat(),
+                }
+                
+                # Calculate utilization if limit is available
+                if credit_data["credit_limit"] and credit_data["credit_limit"] > 0:
+                    utilization = (credit_data["current_balance"] / credit_data["credit_limit"]) * 100
+                    credit_data["utilization_percentage"] = round(utilization, 2)
+                
+                result["credit_cards"].append(credit_data)
+                result["total_debt"] += credit_data["current_balance"]
+                result["liability_count"] += 1
+
+            # Add any remaining liability accounts that aren't mortgages or student loans
+            other_liability_accounts = [
+                acc for acc in accounts_data 
+                if acc.get('type') == 'loan' and acc['account_id'] not in 
+                [m.get('account_id') for m in result["mortgages"]] +
+                [s.get('account_id') for s in result["student_loans"]]
+            ]
+            
+            for account in other_liability_accounts:
+                balances = account.get('balances', {})
+                other_data = {
+                    "account_id": account['account_id'],
+                    "account_name": account.get('name', f"Loan {account['account_id'][-4:]}"),
+                    "account_subtype": account.get('subtype'),
+                    "current_balance": abs(balances.get('current', 0)),
+                    "currency": balances.get('iso_currency_code') or 'USD',
+                    "last_updated": datetime.now().isoformat(),
+                }
+                
+                result["other_liabilities"].append(other_data)
+                result["total_debt"] += other_data["current_balance"]
+                result["liability_count"] += 1
+
+            self.status = f"Successfully retrieved {result['liability_count']} liabilities with total debt of ${result['total_debt']:,.2f}"
+            return result
+
+        except Exception as e:
+            error_msg = f"Failed to get liabilities: {str(e)}"
+            self.status = error_msg
+            raise
+
     def _get_summary(self) -> Dict:
         """Get comprehensive financial summary"""
 
@@ -405,13 +556,14 @@ class PlaidFinancialTool(Component):
                 },
             }
 
+            # Initialize investment and liability values for net worth calculation
+            investment_value = 0
+            total_liabilities = 0
+            
             try:
                 investments = self._get_investments()
                 summary["investments"] = investments
-                
                 investment_value = investments["total_value"]
-                net_worth = banking_total - credit_total + investment_value
-                summary["net_worth"] = net_worth
                 
                 # Add investment performance summary if available
                 if investments.get("total_cost_basis"):
@@ -421,9 +573,20 @@ class PlaidFinancialTool(Component):
                     }
                 
             except Exception as e:
-                summary["net_worth"] = banking_total - credit_total
                 summary["investments"] = None
                 summary["investment_performance"] = None
+
+            try:
+                liabilities = self._get_liabilities()
+                summary["liabilities"] = liabilities
+                total_liabilities = liabilities["total_debt"]
+                
+            except Exception as e:
+                summary["liabilities"] = None
+
+            # Calculate net worth: Assets (banking + investments) - Liabilities (credit + other debt)
+            net_worth = banking_total - credit_total + investment_value - total_liabilities
+            summary["net_worth"] = net_worth
 
             self.status = (
                 f"Generated financial summary - Net worth: ${summary['net_worth']:,.2f}"
@@ -453,7 +616,7 @@ class PlaidFinancialTool(Component):
             self._setup_plaid_client()
 
             # Validate data_type
-            valid_types = ["accounts", "balances", "investments", "summary"]
+            valid_types = ["accounts", "balances", "investments", "liabilities", "summary"]
             if data_type not in valid_types:
                 data_type = "summary"
 
@@ -470,6 +633,9 @@ class PlaidFinancialTool(Component):
 
             elif data_type == "investments":
                 raw_data = self._get_investments()
+
+            elif data_type == "liabilities":
+                raw_data = self._get_liabilities()
 
             elif data_type == "summary":
                 raw_data = self._get_summary()
