@@ -42,7 +42,7 @@ class AlphaVantageNewsTool(Component):
         ),
     ]
 
-    outputs = [Output(display_name="News", name="news", method="news")]
+    outputs = [Output(display_name="Fetch News", name="fetch_news", method="fetch_news")]
 
     def fetch_news_sentiment(self, data, api_key):
         """
@@ -86,7 +86,7 @@ class AlphaVantageNewsTool(Component):
         # Return the JSON response
         return response.json()
 
-    def build_tool(self) -> Data:
+    def fetch_news(self) -> Data:
         """Alpha Vantage News tool for agent"""
         
         # Parse categories from input
