@@ -1,5 +1,12 @@
 import type { Metadata } from 'next'
+import { Fira_Code } from 'next/font/google'
 import './globals.css'
+
+const firaCode = Fira_Code({
+  weight: ['300', '400', '500', '600', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'v0 App',
@@ -14,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={firaCode.className}>{children}</body>
     </html>
   )
 }

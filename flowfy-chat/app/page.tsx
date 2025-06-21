@@ -211,14 +211,9 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-stone-950">
       {/* Header */}
       <div className="border-b border-stone-800 bg-stone-900 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 bg-stone-600 rounded-full">
-            <span className="text-white font-bold text-sm">F</span>
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-white">flowfy</h1>
-            <p className="text-sm text-gray-400">Your AI Financial Assistant</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-semibold text-white">flowfy</h1>
+          <p className="text-sm text-gray-400">Your AI Financial Assistant</p>
         </div>
       </div>
 
@@ -227,9 +222,6 @@ export default function ChatPage() {
         <div className="space-y-6 max-w-4xl mx-auto">
           {messages.length === 0 && (
             <div className="text-center py-12">
-              <div className="w-12 h-12 bg-stone-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-white font-bold text-lg">F</span>
-              </div>
               <h2 className="text-xl font-semibold text-white mb-2">Welcome to flowfy</h2>
               <p className="text-gray-400 mb-6">
                 Your AI-powered financial assistant. Ask me about your finances, investments, or market trends.
