@@ -14,19 +14,15 @@ from langflow.custom import Component
 from langflow.io import StrInput, SecretStrInput, DropdownInput, BoolInput, Output
 from langflow.schema import Data
 
+import plaid
 from plaid.api import plaid_api
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.accounts_balance_get_request import AccountsBalanceGetRequest
 from plaid.model.investments_holdings_get_request import InvestmentsHoldingsGetRequest
-from plaid.model.sandbox_public_token_create_request import (
-    SandboxPublicTokenCreateRequest,
-)
 from plaid.model.item_public_token_exchange_request import (
     ItemPublicTokenExchangeRequest,
 )
 from plaid.model.products import Products
-from plaid.configuration import Configuration
-from plaid.api_client import ApiClient
 
 
 class PlaidFinancialTool(Component):
@@ -80,8 +76,8 @@ class PlaidFinancialTool(Component):
         DropdownInput(
             name="sandbox_institution",
             display_name="Sandbox Institution",
-            options=["ins_1", "ins_2", "ins_3", "ins_4"],
-            value="ins_1",
+            options=["ins_109508", "ins_109509", "ins_109510", "ins_109511"],
+            value="ins_109508",
             info="Sandbox institution to use for auto-generated tokens",
             advanced=True,
         ),
@@ -126,19 +122,24 @@ class PlaidFinancialTool(Component):
 
         self._safe_log(f"Setting up Plaid client for environment: {self.environment}")
 
-        host_mapping = {
-            "sandbox": "https://sandbox.plaid.com",
-            "development": "https://development.plaid.com",
-            "production": "https://production.plaid.com",
-        }
-
         try:
-            configuration = Configuration(
-                host=host_mapping[self.environment],
-                api_key={"clientId": self.client_id, "secret": self.secret_key},
+            # Use proper Plaid Environment constants
+            if self.environment == "sandbox":
+                host = plaid.Environment.Sandbox
+            elif self.environment == "development":
+                host = plaid.Environment.Development
+            else:
+                host = plaid.Environment.Production
+
+            configuration = plaid.Configuration(
+                host=host,
+                api_key={
+                    'clientId': self.client_id,
+                    'secret': self.secret_key,
+                }
             )
 
-            api_client = ApiClient(configuration)
+            api_client = plaid.ApiClient(configuration)
             self.plaid_client = plaid_api.PlaidApi(api_client)
             self.status = f"Connected to Plaid {self.environment} environment"
             self._safe_log(self.status)
@@ -172,9 +173,9 @@ class PlaidFinancialTool(Component):
             # Step 1: Create sandbox public token
             institution_names = {
                 "ins_109508": "First Platypus Bank",
-                "ins_2": "Tartan Bank",
-                "ins_3": "Plaid Credit Union",
-                "ins_4": "Plaid Saving Bank",
+                "ins_109509": "Second Platypus Bank", 
+                "ins_109510": "Third Platypus Bank",
+                "ins_109511": "Fourth Platypus Bank",
             }
 
             institution_id = getattr(self, "sandbox_institution", "ins_109508")
@@ -182,32 +183,20 @@ class PlaidFinancialTool(Component):
             self.status = f"Creating sandbox token for {institution_name}..."
             self._safe_log(self.status)
 
-            sandbox_request = SandboxPublicTokenCreateRequest(
-                institution_id=institution_id,
-                initial_products=[
-                    Products("auth"),
-                    Products("transactions"),
-                    Products("assets"),
-                ],
-            )
-
-            self._safe_log(
-                f"Making sandbox_public_token_create request with institution_id: {institution_id}"
-            )
-            sandbox_response = self.plaid_client.sandbox_public_token_create(
-                sandbox_request
-            )
-            public_token = sandbox_response["public_token"]
+            # Use the sandbox_public_token_create method directly like in the working example
+            sandbox_response = self.plaid_client.sandbox_public_token_create({
+                'institution_id': institution_id,
+                'initial_products': ['auth', 'transactions'],
+            })
+            public_token = sandbox_response['public_token']
             self._safe_log(f"Received public token: {public_token[:10]}...")
 
             # Step 2: Exchange public token for access token
             self._safe_log("Exchanging public token for access token")
             exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
 
-            exchange_response = self.plaid_client.item_public_token_exchange(
-                exchange_request
-            )
-            access_token = exchange_response["access_token"]
+            exchange_response = self.plaid_client.item_public_token_exchange(exchange_request)
+            access_token = exchange_response['access_token']
             self._safe_log(f"Received access token: {access_token[:10]}...")
 
             self._generated_access_token = access_token
@@ -255,12 +244,16 @@ class PlaidFinancialTool(Component):
 
         try:
             response = self.plaid_client.accounts_get(request)
+            # Convert response to dict to access accounts properly
+            response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
+            accounts_data = response_dict['accounts']
+            
             self._safe_log(
-                f"Retrieved {len(response['accounts'])} accounts from Plaid API"
+                f"Retrieved {len(accounts_data)} accounts from Plaid API"
             )
 
             accounts = []
-            for account in response["accounts"]:
+            for account in accounts_data:
                 accounts.append(
                     {
                         "account_id": account["account_id"],
@@ -290,12 +283,16 @@ class PlaidFinancialTool(Component):
 
         try:
             response = self.plaid_client.accounts_balance_get(request)
+            # Convert response to dict to access accounts properly like in working example
+            response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
+            accounts_data = response_dict['accounts']
+            
             self._safe_log(
-                f"Retrieved balances for {len(response['accounts'])} accounts from Plaid API"
+                f"Retrieved balances for {len(accounts_data)} accounts from Plaid API"
             )
 
             balances = []
-            for account in response["accounts"]:
+            for account in accounts_data:
                 balance_data = {
                     "account_id": account["account_id"],
                     "account_name": account["name"],
@@ -331,16 +328,21 @@ class PlaidFinancialTool(Component):
 
         try:
             response = self.plaid_client.investments_holdings_get(request)
+            # Convert response to dict to access data properly
+            response_dict = response.to_dict() if hasattr(response, 'to_dict') else response
+            holdings_data = response_dict['holdings']
+            securities_data = response_dict['securities']
+            
             self._safe_log(
-                f"Retrieved {len(response['holdings'])} holdings and {len(response['securities'])} securities from Plaid API"
+                f"Retrieved {len(holdings_data)} holdings and {len(securities_data)} securities from Plaid API"
             )
 
-            securities = {sec["security_id"]: sec for sec in response["securities"]}
+            securities = {sec["security_id"]: sec for sec in securities_data}
 
             holdings = []
             total_value = 0.0
 
-            for holding in response["holdings"]:
+            for holding in holdings_data:
                 security = securities.get(holding["security_id"])
                 if not security:
                     self._safe_log(
